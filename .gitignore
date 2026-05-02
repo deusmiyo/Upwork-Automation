@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+*.xlsx
+*.log
+*.vbs
+# Keep run_hidden.vbs if it's part of the repo logic
+!run_hidden.vbs

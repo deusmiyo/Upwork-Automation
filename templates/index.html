@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upwork Jobs Dashboard</title>
+  <meta name="description" content="Live dashboard visualising the most in-demand skills scraped from Upwork job listings." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Plotly -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    /* ── Design tokens ───────────────────────────────────────────────────── */
+    :root {
+      --bg:          #0d0f18;
+      --surface:     #13162b;
+      --surface-2:   #1a1f38;
+      --border:      rgba(255,255,255,0.07);
+      --accent:      #6c63ff;
+      --accent-2:    #00d4aa;
+      --accent-glow: rgba(108,99,255,0.35);
+      --text:        #e8eaf6;
+      --muted:       #8b90b8;
+      --success:     #00d4aa;
+      --error:       #ff5c6a;
+      --radius:      14px;
+      --radius-sm:   8px;
+    }
+
+    /* ── Reset ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated gradient background ───────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(108,99,255,0.15) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 110%, rgba(0,212,170,0.10) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .header-left h1 {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-left p {
+      margin-top: 0.25rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    /* ── Scrape button ───────────────────────────────────────────────────── */
+    #btn-scrape {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.65rem 1.4rem;
+      background: linear-gradient(135deg, var(--accent), #9b59ff);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 24px var(--accent-glow);
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+    }
+
+    #btn-scrape:hover { transform: translateY(-2px); box-shadow: 0 0 36px var(--accent-glow); }
+    #btn-scrape:active { transform: translateY(0); }
+    #btn-scrape:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #btn-scrape .icon { font-size: 1rem; }
+
+    /* ── Stats row ───────────────────────────────────────────────────────── */
+    .stats-row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      flex: 1 1 160px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem 1.5rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    .stat-card:hover { transform: translateY(-3px); }
+
+    .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 2rem; font-weight: 800; margin-top: 0.25rem; }
+    .stat-value.accent  { color: var(--accent); }
+    .stat-value.accent2 { color: var(--accent-2); }
+
+    /* ── Chart card ──────────────────────────────────────────────────────── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      min-height: 500px;
+      position: relative;
+    }
+
+    .chart-card h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .chart-card h2 span.dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      display: inline-block;
+    }
+
+    #chart { width: 100%; }
+
+    /* ── Loader ──────────────────────────────────────────────────────────── */
+    #loader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      min-height: 400px;
+    }
+
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Refresh button ──────────────────────────────────────────────────── */
+    #btn-refresh {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.9rem;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      margin-left: auto;
+      display: flex;
+    }
+
+    #btn-refresh:hover { color: var(--text); border-color: var(--accent); }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.2rem;
+    }
+
+    /* ── Modal overlay ───────────────────────────────────────────────────── */
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    #modal-overlay.active { display: flex; }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* ── Modal box ───────────────────────────────────────────────────────── */
+    #modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      width: min(420px, 92vw);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(108,99,255,0.2);
+      animation: slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1);
+      position: relative;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(30px) scale(0.96); opacity: 0; }
+      to   { transform: translateY(0)    scale(1);    opacity: 1; }
+    }
+
+    #modal h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    #modal p.subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+
+    #modal label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 0.5rem;
+    }
+
+    #scrape-url {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    #scrape-url:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    #scrape-url::placeholder { color: var(--muted); }
+
+    #btn-enter {
+      margin-top: 1.2rem;
+      width: 100%;
+      padding: 0.75rem;
+      background: linear-gradient(135deg, var(--accent), #9b59ff);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      box-shadow: 0 4px 20px var(--accent-glow);
+      transition: opacity 0.2s, transform 0.15s;
+    }
+
+    #btn-enter:hover { opacity: 0.9; transform: translateY(-1px); }
+    #btn-enter:active { transform: translateY(0); }
+    #btn-enter:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* close button */
+    #btn-modal-close {
+      position: absolute;
+      top: 1rem; right: 1rem;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+
+    #btn-modal-close:hover { color: var(--text); }
+
+    /* ── Scrape log panel ────────────────────────────────────────────────── */
+    #log-panel {
+      margin-top: 1.2rem;
+      background: #0a0c18;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      max-height: 180px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.72rem;
+      color: #7ed8b2;
+      display: none;
+    }
+
+    #log-panel.active { display: block; }
+    #log-panel div { line-height: 1.6; }
+    #log-panel div.error-line { color: var(--error); }
+
+    /* ── Status badge ────────────────────────────────────────────────────── */
+    #scrape-status-badge {
+      display: none;
+      margin-top: 0.75rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      border-radius: 50px;
+      text-align: center;
+    }
+
+    #scrape-status-badge.running  { background: rgba(108,99,255,0.2); color: var(--accent); display: block; }
+    #scrape-status-badge.done     { background: rgba(0,212,170,0.2);  color: var(--success); display: block; }
+    #scrape-status-badge.error    { background: rgba(255,92,106,0.2); color: var(--error);   display: block; }
+
+    /* ── Toast ───────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 2rem; right: 2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.85rem 1.5rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      z-index: 200;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+      max-width: 320px;
+    }
+
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.toast-success { border-color: var(--success); color: var(--success); }
+    #toast.toast-error   { border-color: var(--error);   color: var(--error); }
+
+    /* ── Empty state ─────────────────────────────────────────────────────── */
+    #empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      min-height: 400px;
+      color: var(--muted);
+    }
+
+    #empty-state .icon-big { font-size: 3rem; }
+    #empty-state p { font-size: 0.9rem; }
+
+    /* ── Scrollbar ───────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="header-left">
+      <h1>Upwork Skills Dashboard</h1>
+      <p>Real-time breakdown of in-demand skills from scraped job listings</p>
+    </div>
+    <button id="btn-scrape">
+      <span class="icon">⚡</span> Scrape Data
+    </button>
+  </header>
+
+  <!-- ── Stats row ──────────────────────────────────────────────────────── -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Unique Skills</div>
+      <div class="stat-value accent" id="stat-skills">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Entries</div>
+      <div class="stat-value accent2" id="stat-entries">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Top Skill</div>
+      <div class="stat-value" id="stat-top" style="font-size:1.1rem; font-weight:700; margin-top:0.4rem;">—</div>
+    </div>
+  </div>
+
+  <!-- ── Chart ──────────────────────────────────────────────────────────── -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <h2><span class="dot"></span> Skills by Frequency</h2>
+      <button id="btn-refresh" title="Refresh chart data">↺ Refresh</button>
+    </div>
+    <div id="loader"><div class="spinner"></div><span style="color:var(--muted);font-size:0.85rem">Loading chart…</span></div>
+    <div id="empty-state" style="display:none;">
+      <div class="icon-big">📊</div>
+      <p>No skill data found. Run a scrape to get started!</p>
+    </div>
+    <div id="chart" style="display:none;"></div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- ── Modal overlay ────────────────────────────────────────────────────── -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <button id="btn-modal-close" aria-label="Close">✕</button>
+    <h3 id="modal-title">🚀 Start a Scrape</h3>
+    <p class="subtitle">Paste an Upwork search URL and hit Enter to begin scraping.</p>
+
+    <label for="scrape-url">Upwork Search URL</label>
+    <input
+      id="scrape-url"
+      type="url"
+      placeholder="https://www.upwork.com/nx/search/jobs/?q=..."
+      autocomplete="off"
+      spellcheck="false"
+    />
+
+    <div id="scrape-status-badge"></div>
+
+    <button id="btn-enter">Enter</button>
+
+    <div id="log-panel"></div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────────── -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+
+function showToast(msg, type = 'success', duration = 3500) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `show toast-${type}`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = '', duration);
+}
+
+/* ── Chart ────────────────────────────────────────────────────────────────── */
+async function loadChart() {
+  $('loader').style.display  = 'flex';
+  $('chart').style.display   = 'none';
+  $('empty-state').style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/chart-data');
+    const data = await res.json();
+
+    if (data.error) {
+      $('loader').style.display = 'none';
+      $('empty-state').style.display = 'flex';
+      return;
+    }
+
+    const skills = data.skills;   // already sorted ascending (Plotly flips for horizontal)
+    const counts = data.counts;
+
+    // Stats
+    $('stat-skills').textContent  = skills.length;
+    $('stat-entries').textContent = counts.reduce((a,b)=>a+b, 0);
+    $('stat-top').textContent     = skills[skills.length - 1] || '—';
+
+    const trace = {
+      type:        'bar',
+      orientation: 'h',
+      x:           counts,
+      y:           skills,
+      text:        counts.map(String),
+      textposition: 'outside',
+      cliponaxis:  false,
+      marker: {
+        color: counts.map((_, i) => {
+          const t = i / (counts.length - 1 || 1);
+          // gradient from accent to accent2
+          const r = Math.round(108 + (0   - 108) * t);
+          const g = Math.round(99  + (212 - 99)  * t);
+          const b = Math.round(255 + (170 - 255) * t);
+          return `rgb(${r},${g},${b})`;
+        }),
+        opacity: 0.85,
+        line: { color: 'rgba(255,255,255,0.05)', width: 1 }
+      },
+      hovertemplate: '<b>%{y}</b><br>Count: %{x}<extra></extra>',
+    };
+
+    const chartH = Math.max(500, skills.length * 32 + 120);
+
+    const layout = {
+      paper_bgcolor: 'transparent',
+      plot_bgcolor:  'transparent',
+      font:          { family: 'Inter, sans-serif', color: '#8b90b8', size: 12 },
+      margin:        { l: 180, r: 80, t: 20, b: 60 },
+      height:        chartH,
+      xaxis: {
+        title:       { text: 'Total Count', font: { color: '#8b90b8' } },
+        gridcolor:   'rgba(255,255,255,0.05)',
+        tickfont:    { color: '#8b90b8' },
+        zeroline:    false,
+      },
+      yaxis: {
+        title:       { text: 'Tagged Skill', font: { color: '#8b90b8' } },
+        gridcolor:   'rgba(255,255,255,0.05)',
+        tickfont:    { color: '#e8eaf6', size: 11 },
+        automargin:  true,
+      },
+      hoverlabel: {
+        bgcolor:    '#1a1f38',
+        bordercolor:'#6c63ff',
+        font:       { family: 'Inter, sans-serif', color: '#fff' }
+      },
+      bargap: 0.35,
+    };
+
+    const cfg = { displayModeBar: false, responsive: true };
+
+    $('loader').style.display = 'none';
+    $('chart').style.display  = 'block';
+    Plotly.newPlot('chart', [trace], layout, cfg);
+
+  } catch (err) {
+    $('loader').style.display = 'none';
+    $('empty-state').style.display = 'flex';
+    showToast('Failed to load chart data.', 'error');
+  }
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+let pollTimer = null;
+let logOffset = 0;
+
+function openModal() {
+  $('modal-overlay').classList.add('active');
+  $('scrape-url').focus();
+}
+
+function closeModal() {
+  $('modal-overlay').classList.remove('active');
+}
+
+$('btn-scrape').addEventListener('click', openModal);
+$('btn-modal-close').addEventListener('click', closeModal);
+$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+$('btn-enter').addEventListener('click', startScrape);
+$('scrape-url').addEventListener('keydown', e => { if (e.key === 'Enter') startScrape(); });
+
+async function startScrape() {
+  const url = $('scrape-url').value.trim();
+  if (!url) {
+    $('scrape-url').focus();
+    showToast('Please paste a URL first.', 'error');
+    return;
+  }
+
+  $('btn-enter').disabled = true;
+  $('btn-scrape').disabled = true;
+  $('log-panel').innerHTML = '';
+  $('log-panel').classList.add('active');
+  logOffset = 0;
+
+  setStatusBadge('running', '⏳ Scrape in progress…');
+
+  try {
+    const res  = await fetch('/api/scrape', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ url }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setStatusBadge('error', `❌ ${data.error}`);
+      $('btn-enter').disabled  = false;
+      $('btn-scrape').disabled = false;
+      return;
+    }
+
+    pollLog();
+
+  } catch (err) {
+    setStatusBadge('error', `❌ ${err.message}`);
+    $('btn-enter').disabled  = false;
+    $('btn-scrape').disabled = false;
+  }
+}
+
+function pollLog() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch('/api/scrape/status');
+      const data = await res.json();
+
+      const newLines = data.log.slice(logOffset);
+      logOffset = data.log.length;
+      const panel = $('log-panel');
+      newLines.forEach(line => {
+        const d = document.createElement('div');
+        if (line.startsWith('ERROR')) d.classList.add('error-line');
+        d.textContent = line;
+        panel.appendChild(d);
+      });
+      panel.scrollTop = panel.scrollHeight;
+
+      if (data.running) {
+        pollLog();
+      } else {
+        $('btn-enter').disabled  = false;
+        $('btn-scrape').disabled = false;
+
+        if (data.error) {
+          setStatusBadge('error', `❌ Scrape failed: ${data.error}`);
+          showToast('Scrape failed.', 'error');
+        } else {
+          setStatusBadge('done', '✅ Scrape complete! Refreshing chart…');
+          showToast('Scrape complete!', 'success');
+          setTimeout(() => { loadChart(); }, 1500);
+        }
+      }
+
+    } catch (err) {
+      pollLog();  // retry on network hiccup
+    }
+  }, 1000);
+}
+
+function setStatusBadge(type, msg) {
+  const b = $('scrape-status-badge');
+  b.className = type;
+  b.textContent = msg;
+}
+
+/* ── Init ─────────────────────────────────────────────────────────────────── */
+$('btn-refresh').addEventListener('click', () => loadChart());
+loadChart();
+</script>
+</body>
+</html>
