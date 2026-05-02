@@ -31,8 +31,8 @@ if not exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
     )
 )
 
-:: ── Launch silently via VBScript ──────────────────────────────────────────────
-wscript "%~dp0run_hidden.vbs"
+:: ── Launch via pythonw (no console window) ───────────────────────────────────
+start "" pythonw "%~dp0launcher.py"
 
 :: Small message in case they ran the .bat directly
 echo Dashboard is starting... your browser will open in a moment.

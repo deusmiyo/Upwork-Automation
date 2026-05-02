@@ -1,6 +1,21 @@
+import setuptools  # Fix for 'distutils' missing in Python 3.12+
+import ssl
+import urllib.request
+import undetected_chromedriver as uc
+import undetected_chromedriver.patcher
+
+# Fix for SSL: CERTIFICATE_VERIFY_FAILED
+# Because undetected-chromedriver caches `urlopen` internally, we MUST patch its specific reference.
+_orig_urlopen = urllib.request.urlopen
+def _patched_urlopen(*args, **kwargs):
+    if 'context' not in kwargs:
+        kwargs['context'] = ssl._create_unverified_context()
+    return _orig_urlopen(*args, **kwargs)
+
+undetected_chromedriver.patcher.urlopen = _patched_urlopen
+
 import pandas as pd
 import time
-import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC

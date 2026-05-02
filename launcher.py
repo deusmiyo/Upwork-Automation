@@ -22,16 +22,26 @@ os.chdir(BASE_DIR)
 # ── Dependency check / silent install ─────────────────────────────────────────
 def _ensure_deps():
     req = os.path.join(BASE_DIR, "requirements.txt")
+    log_file = os.path.join(BASE_DIR, "install_log.txt")
+    
+    # Try to install setuptools first as it is required for distutils shims in Python 3.12+
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools", "-q"])
+    except:
+        pass
+
     if not os.path.exists(req):
         return
+        
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-r", req, "-q", "--exists-action", "i"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        with open(log_file, "w") as f:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "-r", req, "-q", "--exists-action", "i"],
+                stdout=f,
+                stderr=f,
+            )
     except Exception:
-        pass  # best-effort; Flask will fail loudly if something is truly missing
+        pass  # Flask will fail later if critical deps are missing
 
 _ensure_deps()
 
